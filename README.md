@@ -2,7 +2,7 @@
 
 ## Backend
 
-Please install `Flask` by running `pip install flask` when running this locally.
+Please install `Flask` by running `pip3 install flask` when running this locally.
 You can install [DB Browser](https://sqlitebrowser.org) to view the database.
 
 ## Frontend
