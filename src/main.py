@@ -91,7 +91,7 @@ def questions():
         order_dict(QUESTION_GET_COLUMNS, content)
 
         # raise error if datas are of wrong type
-        if not convert_dict_types((str, int), content):
+        if not convert_dict_types((str, int, str), content):
             return "WRONG_TYPES"
 
         # insert code here
