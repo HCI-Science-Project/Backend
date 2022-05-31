@@ -2,6 +2,8 @@ import sqlite3
 import json
 import random
 from flask import Flask, request
+
+# don't use start imports, editor gives annoying warnings
 from sql_funcs import *
 from extern_funcs import *
 from database_columns import *
@@ -36,15 +38,48 @@ with open("./src/layout.json", "r") as layout_read:
 # Flask app
 app = Flask(__name__)
 
-
 @app.route("/", methods=["GET"])
 def home():
-    return "<h1>CONNECTION_SUCESS</h1>"
-
+    return "<h1>hello, world!</h1>"
 
 @app.route("/api/v1/layout", methods=["GET"])
 def layout():
     return LAYOUT_DATA  # Return api layout. Thank me later frontend devs
+
+@app.route("/api/v1/add_correct_question", methods=["POST"])
+def add_correct_question():
+
+    """
+    Might need a way to verify that the user actually did the question,
+    if not trolls can just send an API request to give people more correct questions
+    """
+
+    # CAN SOMEONE PLZ TEST THIS FOR ME THX
+
+    # get post data
+    content = dict(request.form)
+
+    # raise error if lacking data
+    if not dict_contains(COLUMNS["ADD_CORRECT_QUESTION"], content):
+        return "LACKING_DATA"
+
+    # order dict
+    order_dict(COLUMNS["ADD_CORRECT_QUESTION"], content)
+
+    # don't have to convert types so nothing here
+
+    # add user by userid into the database if not exists
+    if not safe_select(cur, "users", {"userid = ?": content["userid"]}, 1):
+        safe_insert(cur, "users", {"userid": content["userid"], "correct_questions": "[]"})
+
+    # add the question into the done questions for user
+    current_user_done = json.loads(
+        safe_select(cur, "users", {"userid = ?", content["userid"], 1})[1]
+    )
+    current_user_done.append(content["questionid"])
+    safe_update(cur, "users", {"correct_questions = ?": json.dumps(current_user_done)}, {"userid = ?": content["userid"]})
+
+    return "SUCCESS"
 
 @app.route("/api/v1/questions", methods=["GET", "POST"])
 def questions():
@@ -56,11 +91,11 @@ def questions():
         content = dict(request.form)
 
         # raise error if lacking data
-        if not dict_contains(QUESTION_ADD_COLUMNS, content):
+        if not dict_contains(COLUMNS["QUESTION_ADD"], content):
             return "LACKING_DATA"
 
         # order dict
-        order_dict(QUESTION_ADD_COLUMNS, content)
+        order_dict(COLUMNS["QUESTION_ADD"], content)
 
         # raise error if datas are of wrong type
         if not convert_dict_types((str, int, str, str, str, str, str, int, str), content):
@@ -84,11 +119,11 @@ def questions():
         content = dict(request.args)
 
         # raise error if lacking data
-        if not dict_contains(QUESTION_GET_COLUMNS, content):
+        if not dict_contains(COLUMNS["QUESTION_GET"], content):
             return "LACKING_DATA"
 
         # order dict
-        order_dict(QUESTION_GET_COLUMNS, content)
+        order_dict(COLUMNS["QUESTION_GET"], content)
 
         # raise error if datas are of wrong type
         if not convert_dict_types((str, int, str), content):
@@ -97,15 +132,15 @@ def questions():
         # insert code here
         # if mode == all then find num random questions from db
         if content["mode"] == "all":
-            data = safe_select(cur,"questions",{},content["num"])
-            random.shuffle(data)
+            data = random.shuffle(safe_select(cur, "questions", {}, content["num"]))
             return to_json(data)
             
         # if mode == undone then find num random questions from db that are not in user list of correct questions
         elif content["mode"] == "undone":
-            questions = safe_select(cur,"users",{"user = ?":content["userid"]},0)[0][1]
-            data = safe_select(cur,"questions",{f"id NOT IN {','.join(['?'*len(questions)])}":questions},0)
-            random.shuffle(data)
+            questions = safe_select(cur, "users", {"user = ?": content["userid"]}).split(",") #? maybe we wanted 2nd element
+            data = random.shuffle(
+                safe_select(cur, "questions", {f"id NOT IN {','.join(['?'*len(questions)])}": questions})
+            )
             return to_json(data)
         
         return "SUCCESS"
@@ -121,13 +156,13 @@ def definitions():
         content = dict(request.form)
 
         # raise error if lacking data
-        if not dict_contains(DEFINITION_ADD_COLUMNS, content):
+        if not dict_contains(COLUMNS["DEFINITION_ADD"], content):
             return "LACKING_DATA"
 
         # don't have to convert types, so no type checks here
 
         # order dict
-        order_dict(DEFINITION_ADD_COLUMNS, content)
+        order_dict(COLUMNS["DEFINITION_ADD"], content)
 
         # insert query
         safe_insert(cur, "definitions", content)
@@ -144,42 +179,22 @@ def definitions():
         content = dict(request.args)
 
         # raise error if lacking data
-        if not dict_contains(DEFINITION_GET_COLUMNS, content):
+        if not dict_contains(COLUMNS["DEFINITION_GET"], content):
             return "LACKING_DATA"
 
         # don't have to convert types / order dict, so nothing here
 
         # get all definitions
-        all_definitions = safe_select(cur, "definitions", {},0)
+        all_definitions = safe_select(cur, "definitions", {"1 = ?": 1} ,False)
 
         # find which definitions match
-        for i in all_definitions:
-            aliases = [j.strip("''") for j in i[2].strip('][').split(',')]
-            aliases.append(i[0]) # parse json to list and ensuring item is part of aliases (no need to remove duplicates)
+        for definition in all_definitions:
+            aliases = json.loads(definition[2]).append(definition[0]) # parse json to list and ensuring item is part of aliases (no need to remove duplicates)
             if content["input"] in aliases:
-                return to_json(DEFINITION_ADD_COLUMNS,[i]) # return definition
+                return json.dumps({"item": definition[0], "definition": definition[1]}) # return definition
  
         # wasnt found
         return "NOT_FOUND"
 
-@app.route("/api/v1/user", methods=["GET"])
-def users():
-
-  # check if input data is in database when user runs command 
-  content = dict(request.args)
-
-  if not dict_contains(USER_GET_COLUMNS, content):
-    return "LACKING_DATA"
-
-  data = safe_select(cur,"users",{"userid = ?":content["userid"]},0)
-
-  if data == []:
-    content["correct_questions"] = []
-    safe_insert(cur, "users", content)
-    return "<p>USER_FOUND</p>" + to_json(("userid","correct_questions"),safe_select(cur,"users",{"userid = ?":content["userid"]},0))
-
-  else:
-    return "<p>USER_FOUND</p>" + to_json(("userid","correct_questions"),data)
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",port="8080")
+    app.run()

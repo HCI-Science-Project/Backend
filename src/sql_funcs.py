@@ -23,7 +23,7 @@ def safe_select(
     # execute select query
     cursor.execute(
     f"""
-    SELECT * FROM {table} {f"WHERE {' AND '.join(str(i) for i in select_dict)}" if select_dict != {} else ''} {f'LIMIT{num}' if num != 0 else ''}
+    SELECT * FROM {table} {f"WHERE {' AND '.join(str(i) for i in select_dict)}" if select_dict != {} else ''} LIMIT {num}
     """, tuple(select_dict.values())
     )
 
@@ -31,3 +31,19 @@ def safe_select(
     rows = cursor.fetchall()
 
     return rows
+
+def safe_update(
+    cursor: sqlite3.Cursor,
+    table: str,
+    update_dict: dict,
+    condition_dict: dict
+):
+
+    # execute update query
+    cursor.execute(
+    f"""
+    UPDATE {table}
+    SET {" AND ".join(update_dict.keys())}
+    WHERE {" AND ".join(condition_dict.keys())}
+    """, tuple(update_dict.values()) + tuple(condition_dict.values())
+    )
